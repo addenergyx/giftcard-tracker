@@ -1,0 +1,31 @@
+[[source]]
+url = "https://pypi.org/simple"
+verify_ssl = true
+name = "pypi"
+
+[packages]
+python-dotenv = "*"
+google-api-python-client = "==1.7.2"
+google-auth-httplib2 = "==0.0.3"
+google-auth-oauthlib = "==0.4.1"
+lxml = "*"
+html5lib = "*"
+pandas = "*"
+numpy = "*"
+html2image = "*"
+boto3 = "*"
+requests = "*"
+anticaptchaofficial = "*"
+bs4 = "*"
+#chromedriver-autoinstaller = "*"
+selenium = "*"
+#webdriver-manager = "*"
+undetected-chromedriver = "*"
+#oauth2client="3.0.0"
+google-auth = "==1.8.0"
+
+[dev-packages]
+webdriver-manager = "*"
+
+[requires]
+python_version = "3.12.0"

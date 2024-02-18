@@ -1,0 +1,18 @@
+Description: This is the template for the containerised-giftcard-checkerlambda function
+
+Resources:
+  PlutusPerksAllocationRepository:
+    Type: AWS::ECR::Repository
+    Properties:
+      RepositoryName: containerised-giftcard-checker
+
+  PlutusPerksAllocationLambdaFunction:
+    Type: AWS::Lambda::Function
+    Properties:
+      FunctionName: dockerised-giftcard-tracker
+      Role: arn:aws:iam::xxxxxxxx:role/lambda-deployment
+      Code:
+        ImageUri: xxxxxxxx.dkr.ecr.eu-west-1.amazonaws.com/containerised-giftcard-checker:latest
+      PackageType: Image
+      Timeout: 900
+      MemorySize: 526

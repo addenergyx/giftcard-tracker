@@ -1,0 +1,20 @@
+Description: This is the template for the containerised-giftcard-lambda lambda function
+
+Resources:
+  SingleGiftcardRepository:
+    Type: AWS::ECR::Repository
+    Properties:
+      RepositoryName: containerised-giftcard-lambda
+
+  SingleGiftcardLambdaFunction:
+    Type: AWS::Lambda::Function
+    Properties:
+      FunctionName: containerised-giftcard-lambda
+      Role: arn:aws:iam::xxxxxxxx:role/lambda-deployment
+#      Code:
+#        ImageUri: xxxxxxxx.dkr.ecr.eu-west-1.amazonaws.com/containerised-giftcard-lambda:latest
+      Code:
+        ImageUri: xxxxxxxx.dkr.ecr.eu-west-1.amazonaws.com/unidays-renewal:latest # Temp image as actual imageUri is not avaliable during this stage
+      PackageType: Image
+      Timeout: 900
+      MemorySize: 526
