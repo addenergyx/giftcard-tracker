@@ -26,6 +26,10 @@ The script functions as follows:
   - It saves the gift card information to my Google Photos and Dynamodb for easy and convenient access.
   - Executes the `pushover` API to send a notification of the gift card number and balance to my phone.
 
+As I have a few projects that use similar code I created this package for them: [commons-shared-library](https://github.com/addenergyx/common-shared-library)
+
+![screenshots](readme-assets/phone-screenshots.png)
+
 ## Response
 ```
 {
@@ -44,5 +48,3 @@ The script functions as follows:
     }
 }
 ```
-
-![screenshots](readme-assets/phone-screenshots.png)
