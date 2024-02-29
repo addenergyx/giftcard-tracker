@@ -1,5 +1,6 @@
 from bs4 import BeautifulSoup
 import re
+import sys
 import boto3
 from decimal import Decimal
 import json
@@ -15,14 +16,11 @@ import lambda_docker_selenium
 load_dotenv(verbose=True, override=True)
 # load_dotenv(dotenv_path='../../.env')
 
-import sys
-sys.path.append('../')
-
-from common.google_photos_upload import get_media_items_name, get_media_items_id, batch_upload, remove_media, move_media
-from common.captcha_bypass import CaptchaBypass
-from common.notification_manager import NotificationManager
-from common.driver_manager import DriverManager
-from common.email_client import EmailClient
+from common_shared_library.google_photos_upload import get_media_items_name, get_media_items_id, batch_upload, remove_media, move_media
+from common_shared_library.captcha_bypass import CaptchaBypass
+from common_shared_library.notification_manager import NotificationManager
+from common_shared_library.driver_manager import DriverManager
+from common_shared_library.email_client import EmailClient
 
 
 def setup_logging():

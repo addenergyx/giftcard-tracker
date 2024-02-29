@@ -23,9 +23,10 @@ selenium = "*"
 undetected-chromedriver = "*"
 #oauth2client="3.0.0"
 google-auth = "==1.8.0"
+common-shared-library = {git = "https://github.com/addenergyx/common-shared-library.git"}
 
 [dev-packages]
 webdriver-manager = "*"
 
 [requires]
-python_version = "3.12.0"
+python_version = "3.12"
