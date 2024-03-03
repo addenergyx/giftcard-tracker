@@ -1,9 +1,3 @@
-# -*- coding: utf-8 -*-
-"""
-Created on Fri Sep 16 09:05:26 2022
-
-@author: david
-"""
 import email
 from bs4 import BeautifulSoup
 import re
@@ -18,28 +12,27 @@ import glob
 from selenium.webdriver.common.by import By
 import logging
 import lambda_docker_selenium
+import sys
+from selenium.webdriver.support.wait import WebDriverWait
 
 load_dotenv(verbose=True, override=True)
 
-import sys
-
-sys.path.append('../Automated-Scripts/')
-
-from common.google_photos_upload import get_media_items_name, get_media_items_id, batch_upload, remove_media, move_media
-from common.captcha_bypass import CaptchaBypass
-from common.aws_connection import connect_to_s3
-from common.notification_manager import NotificationManager
-from common.driver_manager import DriverManager
+from common_shared_library.google_photos_upload import get_media_items_name, batch_upload, move_media
+from common_shared_library.captcha_bypass import CaptchaBypass
+from common_shared_library.notification_manager import NotificationManager
+from common_shared_library.driver_manager import DriverManager
+from common_shared_library.aws_connection import connect_to_s3
 
 ANTICAPTCHA_KEY = os.getenv('ANTICAPTCHA_KEY')
 AWS_SECRET_KEY = os.getenv('AWS_SECRET_KEY')
 AWS_ACCESS_KEY = os.getenv('AWS_ACCESS_KEY')
 AWS_DEFAULT_REGION = "eu-west-1"
-WORKING_ENV = os.getenv('WORKING_ENV', 'DEV')
 NOTIFICATION_TOKEN = os.getenv('NOTIFICATION_TOKEN')
 PUBLIC_SITEKEY = '6LcGYtkZAAAAAHu9BgC-ON7jeraLq5Tgv3vFQzZZ'
+
 BALANCE_CHECKER_URL = "https://www.asdagiftcards.com/balance-check"
 API_URL = "https://api.asdagiftcards.com/api/v1/balance"
+
 PUSH_NOTIFICATION_TITLE = "Single ASDA Giftcard"
 
 def setup_logging():
@@ -95,6 +88,9 @@ def handler(event=None, context=None):
 
     bucket = event['Records'][0]['s3']['bucket']['name']
     key = event['Records'][0]['s3']['object']['key']
+
+    # bucket = "adoka-giftcards-bucket"
+    # key = "gg6lbmis08lcchv2dv5pmo5f7vf6po3t1mqia6o1"
 
     s3_client = boto3.client('s3')
     response = s3_client.get_object(Bucket=bucket, Key=key)
@@ -171,82 +167,111 @@ def handler(event=None, context=None):
                     # Page uses javascript so can't get the link for the button from the page
                     # javascript elements won't load in lambda so need to click manually
 
-                    logger.info(f"Giftcard requires manual claim")
-                    notification_manager.push_notification(PUSH_NOTIFICATION_TITLE, f"Click link to claim giftcard: {giftcard_url}")
-
-                    max_attempts = 60  # Number of attempts to find the button
-                    attempt = 0
-
                     driver.get(giftcard_url)
+                    try:
+                        logger.info(f"Clicking button to claim giftcard...")
+                        wait = WebDriverWait(driver, timeout=30)
+                        wait.until(lambda d: driver.find_element(By.CLASS_NAME, 'button-redeem')).click()
+                        logger.info(f"Claim button clicked")
 
-                    while attempt < max_attempts:
-                        # try:
-                        response = requests.get(giftcard_url)
+                        element_found = False  # Flag to indicate if the element was found
+                        logger.info(f"Waiting for element with ID 'accountnumber_pin' to appear...")
 
-                        soup = BeautifulSoup(response.text, 'html.parser')
-                        element = soup.find(id="barcode")
-                        if element:
-                            logger.info(f"Giftcard has been claimed manually")
-                            break
-                        else:
-                            time.sleep(5)
-                            # Wait for the button to be present
-                            # WebDriverWait(driver, 20).until(
-                            #     EC.presence_of_element_located((By.ID, "barcode"))
-                            # )
-                            # break  # Exit the loop if the button is found
-                        # except Exception as e:
-                        #     print(f"Attempt {attempt + 1} failed. Refreshing page...")
-                        #     driver.refresh()
-                        #     attempt += 1
+                        for i in range(30):
+                            if driver.find_elements(By.ID, 'accountnumber_pin'):
+                                giftcard_url = driver.current_url  # Get the new url after clicking the button
+                                element_found = True  # Set the flag to True as the element is found
+                                logger.info(f"Element with ID 'accountnumber_pin' found after {i + 1} attempts.")
+                                break
+                            else:
+                                time.sleep(10)
+                                driver.refresh()
 
-                    if attempt == max_attempts:
-                        # Return a specific response and quit the Lambda function
+                        if not element_found:
+                            logger.error(f"Element with ID 'accountnumber_pin' not found after 30 attempts.")
+                            raise Exception("Element with ID 'accountnumber_pin' not found after 30 attempts.")
 
-                        logger.error(f"Failed to load giftcard after several attempts")
+                    except Exception as e:
+                        logger.error(f"Error clicking button, requesting manual intervention: {e}")
 
-                        notification_manager.push_notification(PUSH_NOTIFICATION_TITLE,
-                                          f"Failed to load giftcard after several attempts, "
-                                          f"make sure card has been manually claimed first then run giftcard tracker lambda{giftcard_url}")
+                        notification_manager.push_notification(PUSH_NOTIFICATION_TITLE, f"Click link to claim giftcard: {giftcard_url}")
+                        logger.info(f"Giftcard manual intervention requested")
 
-                        return {
-                            "statusCode": 400,
-                            "body": json.dumps("Failed to load giftcard after several attempts.")
-                        }
+                        max_attempts = 60  # Number of attempts to find barcode
+                        attempt = 0
+
+                        driver.get(giftcard_url)
+
+                        while attempt < max_attempts:
+                            # try:
+                            response = requests.get(giftcard_url)
+
+                            soup = BeautifulSoup(response.text, 'html.parser')
+                            element = soup.find(id="barcode")
+                            if element:
+                                logger.info(f"Giftcard has been claimed manually")
+                                break
+                            else:
+                                time.sleep(5)
+                                # Wait for the button to be present
+                                # WebDriverWait(driver, 20).until(
+                                #     EC.presence_of_element_located((By.ID, "barcode"))
+                                # )
+                                # break  # Exit the loop if the button is found
+                            # except Exception as e:
+                            #     print(f"Attempt {attempt + 1} failed. Refreshing page...")
+                            #     driver.refresh()
+                            #     attempt += 1
+
+                        if attempt == max_attempts:
+
+                            logger.error(f"Failed to load giftcard after several attempts")
+
+                            notification_manager.push_notification(PUSH_NOTIFICATION_TITLE,
+                                              f"Failed to load giftcard after several attempts, "
+                                              f"make sure card has been manually claimed first then run giftcard tracker lambda{giftcard_url}")
+
+                            return {
+                                "statusCode": 400,
+                                "body": json.dumps("Failed to load giftcard after several attempts.")
+                            }
 
                     page = requests.get(giftcard_url)
                     html_ = page.content
 
-                    # Doesn't work in lambda, javascript won't load
-                    # driver.get(giftcard_url)
-                    # driver.implicitly_wait(20)
-                    # driver.find_element('class name', 'button-redeem').click()
-                    # giftcard_url = driver.current_url
-                    # driver.implicitly_wait(60)
-                    # driver.refresh()
-                    # driver.implicitly_wait(10)
-                    # html_ = driver.page_source
-
                 else:
+
+                    # driver.get(giftcard_url)
+                    # if "Uber" in driver.page_source:
+                    #
+                    #     code = driver.find_element(By.XPATH,
+                    #                                '/html/body/div/div/div/div[2]/div[2]/table/tbody/tr[2]/td[2]').text
+                    #
+                    #     driver.get('https://wallet.uber.com/')
+                    #
+                    #     driver.find_element(By.ID, 'PHONE_NUMBER_or_EMAIL_ADDRESS').send_keys('david-adeniji@hotmail.co.uk')
+                    #     driver.find_element(By.ID, 'forward-button').click()
+
                     break
 
+                logger.info("Scarping giftcard number and pin...")
                 soup = BeautifulSoup(html_, 'html.parser')
-
                 soup.findAll('iframe')
 
                 aq = soup.select('div[id*="accountnumber_pin"]')
 
                 numbers = re.sub('\D', '', aq[0].text)
-
                 card_number = numbers[:16]
                 pin = numbers[-4:]
 
                 link = soup.findAll('a', attrs={'class': 'apple-wallet-badge'})[0]
-
                 link = link['href']
 
-                x = 0
+                logger.info("Giftcard number and pin scrapped successfully")
 
+                logger.info("Requesting balance via ASDA API...")
+
+                x = 0
                 while x < 6:
 
                     g_response = CaptchaBypass(PUBLIC_SITEKEY, BALANCE_CHECKER_URL).bypass()
@@ -271,11 +296,13 @@ def handler(event=None, context=None):
                         img_filename = 'giftcard_' + card_id + '.png'
 
                         balance = float(balance[:-2] + '.' + balance[-2:])  # balance returned in pence
+                        logger.info(f"Card number: {card_id} has balance: {balance}")
 
                         if balance <= 0.0:
                             # mark the mail as deleted
                             # mail.store(item, "+FLAGS", "\\Deleted") # delete at the end instead
-                            print(f'Card to be deleted: {card_id} with balance {balance}')
+                            # print(f'Card to be deleted: {card_id} with balance {balance}')
+                            logger.info(f"Card to be deleted: {card_id} with balance {balance}")
                             cards_to_delete.append(img_filename)
                             notification_manager.push_notification(PUSH_NOTIFICATION_TITLE, f"Card number: {card_id}\nCurrent balance: {balance}")
                             break
@@ -283,16 +310,25 @@ def handler(event=None, context=None):
                         else:
                             notification_manager.push_notification(PUSH_NOTIFICATION_TITLE, f"Card number: {card_id}\nCurrent balance: {balance}")
 
+                            logger.info(f"Starting screenshot for {card_id}...")
+
                             if img_filename not in current_giftcards_in_album:
                                 # hti.screenshot(url=giftcard_url, save_as=img_filename)
+
+                                logger.info(f"Screenshotting giftcard barcode for {giftcard_url}...")
+
                                 driver.get(giftcard_url)
+
+                                logger.info(f"Screenshotting giftcard barcode for {card_id}...")
 
                                 S = lambda X: driver.execute_script('return document.body.parentNode.scroll' + X)
                                 driver.set_window_size(S('Width'), S('Height'))  # May need manual adjustment
 
                                 driver.save_screenshot(
-                                    directory + '/' + img_filename) if WORKING_ENV == 'PROD' else driver.find_element(
+                                    directory + '/' + img_filename) if os.getenv('AWS_LAMBDA_FUNCTION_NAME') else driver.find_element(
                                     By.TAG_NAME, 'body').screenshot(directory + '/' + img_filename)
+
+                                logger.info(f"Screenshot saved as {img_filename}")
 
                         data.append([card_id, balance, link])
                         # print(f'{card_id}-{pin}: £{balance}')
@@ -302,6 +338,7 @@ def handler(event=None, context=None):
 
                     else:
                         x += 1
+                        logger.error(f"Card number: {card_number} failed with message: {response['message']}")
                         # print(card_number)
                         # print(pin)
                         # print(response['message'])
@@ -312,7 +349,7 @@ def handler(event=None, context=None):
                         logger.error(f"Card number: {card_number} failed with message: {response['message']}")
                         img_filename = 'giftcard_' + card_number + '.png'
                         driver.save_screenshot(
-                            directory + '/' + img_filename) if WORKING_ENV == 'PROD' else driver.find_element(
+                            directory + '/' + img_filename) if os.getenv('AWS_LAMBDA_FUNCTION_NAME') else driver.find_element(
                             By.TAG_NAME, 'body').screenshot(directory + '/' + img_filename)
 
                         driver.close()
