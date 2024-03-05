@@ -13,14 +13,16 @@ from selenium.webdriver.common.by import By
 import logging
 import lambda_docker_selenium
 
-load_dotenv(verbose=True, override=True)
 # load_dotenv(dotenv_path='../../.env')
 
-from common_shared_library.google_photos_upload import get_media_items_name, get_media_items_id, batch_upload, remove_media, move_media
+from common_shared_library.google_photos_upload import get_media_items_name, get_media_items_id, batch_upload, \
+    remove_media, move_media
 from common_shared_library.captcha_bypass import CaptchaBypass
 from common_shared_library.notification_manager import NotificationManager
 from common_shared_library.driver_manager import DriverManager
 from common_shared_library.email_client import EmailClient
+
+load_dotenv(verbose=True, override=True)
 
 
 def setup_logging():
@@ -37,6 +39,7 @@ def setup_logging():
     logger.setLevel(logging.INFO)
 
     return logger
+
 
 EMAIL_USER = os.getenv('DASHBOARD_EMAIL')
 EMAIL_PASS = os.getenv('DASHBOARD_PASS')
@@ -138,7 +141,12 @@ def handler(event=None, context=None):
                     # Newer giftcards have newlines in the url
                     giftcard_url = giftcard_url.replace('\n', '').replace('\r', '').replace('=', '')
 
-                page = requests.get(giftcard_url)
+                try:
+                    page = requests.get(giftcard_url)
+                except requests.exceptions.MissingSchema:
+                    logger.error(f'Invalid URL: {giftcard_url}')
+                    continue
+
                 giftcard_url = page.url  # For topcashback email need to get redirect url not original url
 
                 if page.status_code == 200:
@@ -256,7 +264,7 @@ def handler(event=None, context=None):
                                         By.TAG_NAME, 'body').screenshot(directory + '/' + img_filename)
 
                             data.append([card_id, balance, link])
-                            logger.info(f'{card_id}-{pin}: £{balance}')
+                            logger.info(f'{card_id}: £{balance}')
                             total += balance
 
                             break
@@ -264,13 +272,12 @@ def handler(event=None, context=None):
                         else:
                             x += 1
                             logger.debug(f'Card number: {card_number}')
-                            logger.debug(f'Pin: {pin}')
                             logger.error(f'Response message: {response["message"]}')
                         if x == 5:
                             data.append([card_number, response['message'], '-'])
                             logger.debug(f'Card number: {card_number}')
-                            logger.debug(f'Pin: {pin}')
-                            logger.error(f'Failed to get balance for giftcard: {card_number} after {x} attempts, Response message: {response["message"]}')
+                            logger.error(
+                                f'Failed to get balance for giftcard: {card_number} after {x} attempts, Response message: {response["message"]}')
                             notification_manager.push_notification(PUSH_TITLE,
                                                                    f"Failed to get balance for giftcard: {card_number}")
                             break
@@ -308,7 +315,13 @@ def handler(event=None, context=None):
         # push_notification(NOTIFICATION_TOKEN, "ASDA Giftcards",
         #                   f"Current balance: {total}\nDeleted cards {cards_to_delete}")
         if media_to_delete:
-            remove_media(media_to_delete)
+
+            # Make note in description to delete giftcard from main photos gallery
+            request_body = {
+                "description": "Balance is 0. Delete this giftcard"
+            }
+
+            remove_media(media_to_delete, request_body=request_body)
     else:
         notification_manager.push_notification(PUSH_TITLE, push_content)
 
@@ -320,7 +333,10 @@ def handler(event=None, context=None):
     with giftcards_table.batch_writer(overwrite_by_pkeys=['card_id']) as batch:
         for row in dic_:
             giftcard_dic = json.loads(json.dumps(row), parse_float=Decimal)
-            logger.info(f"Updated challenge {giftcard_dic['card_id']} in giftcard table")
+            # current_item = giftcards_table.get_item(Key={'card_id': giftcard_dic['card_id']}).get('Item', {})
+
+            # if giftcard_dic != current_item:
+            logger.info(f"Updated details {giftcard_dic['card_id']} in giftcard table")
             batch.put_item(Item=giftcard_dic)
 
     driver_manager.close_driver()
