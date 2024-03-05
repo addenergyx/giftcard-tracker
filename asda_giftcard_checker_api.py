@@ -330,14 +330,24 @@ def handler(event=None, context=None):
 
     dic_ = [{'card_id': x[0], 'balance': x[1], 'link': x[2]} for x in data]
 
+    # https://github.com/boto/boto3/issues/2584
     with giftcards_table.batch_writer(overwrite_by_pkeys=['card_id']) as batch:
         for row in dic_:
             giftcard_dic = json.loads(json.dumps(row), parse_float=Decimal)
-            # current_item = giftcards_table.get_item(Key={'card_id': giftcard_dic['card_id']}).get('Item', {})
+            card_id = giftcard_dic['card_id']
 
-            # if giftcard_dic != current_item:
-            logger.info(f"Updated details {giftcard_dic['card_id']} in giftcard table")
-            batch.put_item(Item=giftcard_dic)
+            # Check if the item exists and fetch its current data
+            existing_item = giftcards_table.get_item(Key={'card_id': card_id}).get('Item')
+
+            if existing_item is None or existing_item != giftcard_dic:
+                logger.info(f"Updated details {card_id} in giftcard table")
+
+                '''The batch_writer context manager will automatically group the put_item operations into batches and send them to DynamoDB. 
+                The condition check (if existing_item is None or existing_item != giftcard_dic) will determine whether 
+                the put_item operation should be added to the batch or not.'''
+                batch.put_item(Item=giftcard_dic)
+            else:
+                logger.info(f"No changes for {card_id}, skipping update")
 
     driver_manager.close_driver()
 
