@@ -15,6 +15,14 @@ By doing so, it ensures these gift cards are utilized effectively and prevents t
 
 ![Architecture Diagram](./readme-assets/aws_architecture.png)
 
+### Why Dynamodb over RDS?
+Given the requirements of this project, DynamoDB seems to be a more suitable choice than RDS. DynamoDB's ability to handle unstructured data and its seamless integration with AWS Lambda and S3 make it ideal for this application. Its scalability and performance are beneficial for handling the variable load and data structure of gift card information. Additionally, the use of DynamoDB aligns well with the serverless architecture of AWS Lambda, providing a more streamlined and efficient solution for this specific use case. DynamoDB is managed by AWS, reducing the overhead of database maintenance and management. If this application heavily relied on complex queries, transactions, or relational data operations, RDS may have been a better fit. 
+
+### Why lambda over EC2/Fargate?
+- **Event-Driven Architecture**: Lambda functions are ideal for event-driven applications. In this project, functions are triggered by specific events (like the arrival of an email in an S3 bucket).
+- **Scalability**: Lambda automatically scales based on the number of incoming requests, which can be beneficial for handling fluctuating workloads without manual intervention.
+- **Cost-Effectiveness**: Lambda charges are based on the actual usage (compute time and number of requests), which can be more cost-effective for applications with variable or sporadic traffic.
+
 ## Design
 
 The script functions as follows:
