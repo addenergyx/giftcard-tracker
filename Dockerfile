@@ -2,6 +2,8 @@
 
 FROM umihico/aws-lambda-selenium-python:latest
 
+RUN yum -y install git
+
 RUN pip install pipenv
 
 ENV PROJECT_DIR /usr/local/src/code
