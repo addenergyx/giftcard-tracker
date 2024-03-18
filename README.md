@@ -2,6 +2,12 @@
 Containerised lambdas for tracking and storing ASDA giftcards
 
 ## Intent
+I built this workflow because I found no good way to keep track of each card's balance. 
+Initialing I'd keep track by checking the balance via the site and add it to my Apple notes. 
+This was tiresome when tracking multiple gift cards. 
+It shows the current balance and the card number as an iOS push notification.
+
+## Other domain information
 In light of the significant value of unused gift cards in the US, this script aims to manage and maximize the usage of gift cards, particularly ASDA gift cards, obtained through an employee perks and discount program.
 
 - The estimated value of unused gift cards in the US was $3 billion at the end of 2019 (Source: Investopedia)
@@ -50,7 +56,7 @@ As I have a few projects that use similar code I created this package for them: 
 {
     "statusCode": 200,
     "body": {
-        "message": "Giftcard lambda invoke successful",
+        "message": "Gift card lambda invoke successful",
         "Balance": 6.48,
         "Added": [],
         "Deleted": [
