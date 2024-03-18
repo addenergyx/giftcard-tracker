@@ -5,6 +5,7 @@ __pycache__/
 
 token files/
 *.pickle
+*.json
 
 # C extensions
 *.so
