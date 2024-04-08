@@ -32,7 +32,7 @@ Using SQS and lambda to deal with long running tasks in lambda.
 When there are over 10 giftcards the lambda would time out. To avoid this I'm using SQS to queue the giftcards and process them in batches of 5.
 As the order of balance checking isn't critical and the primary goal is to achieve higher throughput, a standard queue is used.
 ![All giftcards lambda v2](readme-assets/all-giftcards-lambda-v2.png)
-
+![img.png](all-giftcards-lambda-v2.png)
 ## Design
 
 The script functions as follows:
