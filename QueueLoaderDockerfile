@@ -1,0 +1,24 @@
+# Dockerfile, Image, Container
+
+FROM umihico/aws-lambda-selenium-python:latest
+
+# The image uses dnf as the package manager, which is the default package manager for Fedora and certain other RPM-based Linux distributions.
+RUN dnf install -y git
+
+RUN pip install pipenv
+
+COPY Pipfile* ./
+
+RUN pip install --upgrade cython
+RUN pip install --upgrade pip
+
+RUN pipenv install --system --deploy
+
+COPY giftcard_loader.py ${LAMBDA_TASK_ROOT}
+COPY lambda_docker_selenium.py ${LAMBDA_TASK_ROOT}
+COPY utils.py ${LAMBDA_TASK_ROOT}
+COPY .env ${LAMBDA_TASK_ROOT}
+COPY photoslibrary_creds.json ${LAMBDA_TASK_ROOT}
+
+CMD [ "giftcard_loader.lambda_handler" ]
+
