@@ -130,13 +130,17 @@ def lambda_handler(event, context):
 
         return {
             'statusCode': 200,
-            'body': json.dumps(f'Giftcard balance(s) updated successfully! Total balance: {money_format(total)}')
+            'body': json.dumps({
+                "body": {
+                    'message': 'Giftcard lambdas invoked successfully',
+                    'total_balance': float(total),
+                }
+            }, indent=4)
         }
-
 
     return {
         'statusCode': 200,
-        'body': json.dumps('Giftcard balance(s) updated successfully!')
+        'body': json.dumps('Giftcard balance(s) updated successfully!'),
     }
 
 
