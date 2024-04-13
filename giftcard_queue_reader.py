@@ -1,13 +1,14 @@
 import json
 import os
 import boto3
+from boto3.dynamodb.conditions import Attr
 
 from dotenv import load_dotenv
 
 load_dotenv('.env', verbose=True, override=True)
 
 from utils import get_balancer, add_giftcards_to_table, money_format, setup_logging
-from common_shared_library import NotificationManager
+from common_shared_library import NotificationManager, AWSConnector
 from common_shared_library.google_photos_upload import get_media_items_id, remove_media
 
 
@@ -26,6 +27,7 @@ def lambda_handler(event, context):
 
             message_body = json.loads(record['body'])
             card_id = message_body['card_id']
+            response = {}
 
             x = 0
             while x < 6:
@@ -97,9 +99,44 @@ def lambda_handler(event, context):
 
     add_giftcards_to_table(data, giftcards_table)
 
+    sqs = boto3.resource('sqs')
+    queue = sqs.get_queue_by_name(QueueName='GiftcardQueue')
+
+
+    # if last lambda batch
+    if int(queue.attributes["ApproximateNumberOfMessages"]) == 0 and queue.attributes["ApproximateNumberOfMessagesNotVisible"] == len(event['Records']):
+
+        aws_manager = AWSConnector()
+
+        table = aws_manager.connect_to_dynamodb("giftcards")
+
+        response = table.scan(
+            FilterExpression=Attr('balance').gt(0)
+        )
+
+        # Extract items with balance greater than 0
+        giftcard_tasks = response['Items']
+
+        # Since `scan` reads up to the maximum number of items set (default is 1MB of data),
+        # you must handle pagination if the entire result set requires more than 1MB
+        while 'LastEvaluatedKey' in response:
+            response = table.scan(
+                FilterExpression=Attr('balance').gt(0),
+                ExclusiveStartKey=response['LastEvaluatedKey']
+            )
+            giftcard_tasks.extend(response['Items'])
+
+        total = sum([x['balance'] for x in giftcard_tasks])
+
+        return {
+            'statusCode': 200,
+            'body': json.dumps(f'Giftcard balance(s) updated successfully! Total balance: {money_format(total)}')
+        }
+
+
     return {
         'statusCode': 200,
-        'body': json.dumps('Giftcard balance updated successfully!')
+        'body': json.dumps('Giftcard balance(s) updated successfully!')
     }
 
 
