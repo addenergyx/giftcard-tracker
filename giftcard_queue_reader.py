@@ -13,8 +13,8 @@ from common_shared_library.google_photos_upload import get_media_items_id, remov
 
 
 def lambda_handler(event, context):
+
     batch_item_failures = []
-    sqs_batch_response = {}
     data = []
 
     logger = setup_logging()
@@ -81,8 +81,7 @@ def lambda_handler(event, context):
 
         except Exception as e:
             batch_item_failures.append({"itemIdentifier": record['messageId']})
-
-    sqs_batch_response["batchItemFailures"] = batch_item_failures
+            logger.error(f"Failed to process message {record['messageId']}. Error: {e}")
 
     AWS_SECRET_KEY = os.getenv('AWS_SECRET_KEY')
     AWS_ACCESS_KEY = os.getenv('AWS_ACCESS_KEY')
@@ -104,7 +103,9 @@ def lambda_handler(event, context):
 
 
     # if last lambda batch
-    if int(queue.attributes["ApproximateNumberOfMessages"]) == 0 and queue.attributes["ApproximateNumberOfMessagesNotVisible"] == len(event['Records']):
+    if (int(queue.attributes["ApproximateNumberOfMessages"]) == 0
+            and queue.attributes["ApproximateNumberOfMessagesNotVisible"] == str(len(event['Records']))
+            and len(batch_item_failures) == 0):
 
         aws_manager = AWSConnector()
 
@@ -115,7 +116,7 @@ def lambda_handler(event, context):
         )
 
         # Extract items with balance greater than 0
-        giftcard_tasks = response['Items']
+        giftcards = response['Items']
 
         # Since `scan` reads up to the maximum number of items set (default is 1MB of data),
         # you must handle pagination if the entire result set requires more than 1MB
@@ -124,9 +125,14 @@ def lambda_handler(event, context):
                 FilterExpression=Attr('balance').gt(0),
                 ExclusiveStartKey=response['LastEvaluatedKey']
             )
-            giftcard_tasks.extend(response['Items'])
+            giftcards.extend(response['Items'])
 
-        total = sum([x['balance'] for x in giftcard_tasks])
+        total = sum([x['balance'] for x in giftcards])
+
+        notification_manager.push_notification(
+            title='Giftcard Balance',
+            message=f'Total aggregated balance: {money_format(total)}',
+        )
 
         return {
             'statusCode': 200,
@@ -140,6 +146,7 @@ def lambda_handler(event, context):
 
     return {
         'statusCode': 200,
+        "batchItemFailures": batch_item_failures,
         'body': json.dumps('Giftcard balance(s) updated successfully!'),
     }
 
