@@ -18,7 +18,7 @@ COPY giftcard_loader.py ${LAMBDA_TASK_ROOT}
 COPY lambda_docker_selenium.py ${LAMBDA_TASK_ROOT}
 COPY utils.py ${LAMBDA_TASK_ROOT}
 COPY .env ${LAMBDA_TASK_ROOT}
-COPY photoslibrary_creds.json ${LAMBDA_TASK_ROOT}
+#COPY photoslibrary_creds.json ${LAMBDA_TASK_ROOT}
 
 CMD [ "giftcard_loader.lambda_handler" ]
 

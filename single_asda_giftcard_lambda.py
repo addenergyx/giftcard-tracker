@@ -15,7 +15,9 @@ import lambda_docker_selenium
 import sys
 from selenium.webdriver.support.wait import WebDriverWait
 
-load_dotenv(verbose=True, override=True)
+from utils import add_giftcards_to_table, setup_logging
+
+load_dotenv('.env', verbose=True, override=True)
 
 from common_shared_library.google_photos_upload import get_media_items_name, batch_upload, move_media
 from common_shared_library.captcha_bypass import CaptchaBypass
@@ -34,21 +36,6 @@ BALANCE_CHECKER_URL = "https://www.asdagiftcards.com/balance-check"
 API_URL = "https://api.asdagiftcards.com/api/v1/balance"
 
 PUSH_NOTIFICATION_TITLE = "Single ASDA Giftcard"
-
-def setup_logging():
-    logger = logging.getLogger()
-    for h in logger.handlers:
-        logger.removeHandler(h)
-
-    h = logging.StreamHandler(sys.stdout)
-
-    # use whatever format you want here
-    FORMAT = '%(asctime)s - %(levelname)s - %(message)s'
-    h.setFormatter(logging.Formatter(FORMAT))
-    logger.addHandler(h)
-    logger.setLevel(logging.INFO)
-
-    return logger
 def handler(event=None, context=None):
 
     logger = setup_logging()
@@ -88,9 +75,6 @@ def handler(event=None, context=None):
 
     bucket = event['Records'][0]['s3']['bucket']['name']
     key = event['Records'][0]['s3']['object']['key']
-
-    # bucket = "adoka-giftcards-bucket"
-    # key = "gg6lbmis08lcchv2dv5pmo5f7vf6po3t1mqia6o1"
 
     s3_client = boto3.client('s3')
     response = s3_client.get_object(Bucket=bucket, Key=key)
@@ -330,7 +314,7 @@ def handler(event=None, context=None):
 
                                 logger.info(f"Screenshot saved as {img_filename}")
 
-                        data.append([card_id, balance, link])
+                        data.append([card_id, balance, link, pin])
                         # print(f'{card_id}-{pin}: £{balance}')
                         total += balance
 
@@ -388,14 +372,7 @@ def handler(event=None, context=None):
         for f in files:
             os.remove(f)
 
-    dic_ = [{'card_id': x[0], 'balance': x[1], 'link': x[2]} for x in data]
-    logger.info(f"Adding giftcards to giftcard table: {dic_}")
-
-    with giftcards_table.batch_writer(overwrite_by_pkeys=['card_id']) as batch:
-        for row in dic_:
-            giftcard_dic = json.loads(json.dumps(row), parse_float=Decimal)
-            logger.info(f"Adding giftcard {giftcard_dic['card_id']} in giftcard table")
-            batch.put_item(Item=giftcard_dic)
+    add_giftcards_to_table(data, giftcards_table)
 
     return json.dumps({
         "statusCode": 200,
@@ -407,4 +384,16 @@ def handler(event=None, context=None):
 
 
 if not os.getenv('AWS_LAMBDA_FUNCTION_NAME'):
-    print(handler())
+
+    bucket = "adoka-giftcards-bucket"
+    key = ""
+
+    event = {'Records': [
+        {'s3':
+             {'bucket':
+                  {'name':bucket},
+            'object':
+                   {'key': key}
+              },
+    }]}
+    print(handler(event))
