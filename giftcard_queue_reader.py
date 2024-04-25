@@ -1,3 +1,4 @@
+import asyncio
 import json
 import os
 import boto3
@@ -5,79 +6,99 @@ from boto3.dynamodb.conditions import Attr
 
 from dotenv import load_dotenv
 
+from GiftCard import GiftCard
+from GiftCardAPIService import GiftCardAPIService
+
 load_dotenv('.env', verbose=True, override=True)
 
-from utils import get_balancer, add_giftcards_to_table, money_format, setup_logging
-from common_shared_library import NotificationManager, AWSConnector
+from utils import add_giftcards_to_table, money_format, setup_logging
+from common_shared_library import NotificationManager, AWSConnector, CaptchaBypass
 from common_shared_library.google_photos_upload import get_media_items_id, remove_media
+
+logger = setup_logging()
+
+
+def is_last_batch(queue_attributes, records_count, batch_item_failures):
+    # Check if there are no messages left in the queue and no messages being processed elsewhere
+    if (int(queue_attributes["ApproximateNumberOfMessages"]) == 0 and
+            int(queue_attributes["ApproximateNumberOfMessagesNotVisible"]) == records_count and
+            len(batch_item_failures) == 0):
+        return True
+    return False
+
+
+def handle_zero_balance(giftcard: GiftCard, notification_manager: NotificationManager):
+    img_filename = f'giftcard_{giftcard.card_number}.png'
+    media_to_delete = get_media_items_id(filter_=[img_filename])
+    notification_manager.push_notification(
+        "Deleting Giftcard from Photos Gallery",
+        f"Deleting giftcard {giftcard.card_number} from photos gallery as balance is {giftcard.balance}"
+    )
+
+    # Make note in description to delete giftcard from main photos gallery
+    request_body = {
+        "description": "Balance is 0. Delete this giftcard"
+    }
+
+    if media_to_delete:
+        remove_media(media_to_delete, request_body=request_body)
+        logger.info(f"Giftcard {giftcard.card_number} balance is 0. Deleting from photos gallery...")
 
 
 def lambda_handler(event, context):
-
     batch_item_failures = []
     data = []
 
-    logger = setup_logging()
     # driver, directory = driver_selection()
     notification_manager = NotificationManager()
+
+    MAX_RETRIES = 5
 
     for record in event['Records']:
 
         try:
 
             message_body = json.loads(record['body'])
-            card_id = message_body['card_id']
-            response = {}
 
-            x = 0
-            while x < 6:
+            gift_card = GiftCard(message_body['card_id'], message_body['pin'])
+            captcha_bypass = CaptchaBypass(sitekey="6LcGYtkZAAAAAHu9BgC-ON7jeraLq5Tgv3vFQzZZ",
+                                           url="https://www.asdagiftcards.com/balance-check")
+            api_service = GiftCardAPIService(captcha_bypass)
 
-                response = get_balancer(card_id, message_body['pin'])
-                if 'response_code' in response and response['response_code'] == '00':
-                    logger.info(f"Response from balance checker: {response}")
+            for attempt in range(MAX_RETRIES):
+                balance = api_service.get_balance(gift_card.card_number, gift_card.pin)
+                if balance is not None:
+                    gift_card.update_balance(balance)
+                    logger.info(f"Balance successfully retrieved for card {gift_card.card_number}")
                     break
                 else:
-                    logger.error(f"Failed to get balance for card {card_id}. Retrying...")
-                    x += 1
-
-                if x == 5:
-                    logger.error(f"Failed to get balance for card {card_id}. Skipping...")
-                    data.append([card_id, '-', message_body['link'], message_body['pin']])
-                    notification_manager.push_notification(
-                        title='Giftcard Balance Updated',
-                        message=f"Failed to get balance for card {card_id}. Skipping...",
-                    )
-
-            if x == 5:
-                continue
-
-            balance = float(response['new_balance']) / 100
-
-            if balance == 0:
-                img_filename = f'giftcard_{card_id}.png'
-                media_to_delete = get_media_items_id(filter_=[img_filename])
-                notification_manager.push_notification(
-                    "Deleting Giftcard from Photos Gallery",
-                    f"Deleting giftcard {card_id} from photos gallery as balance is {balance}"
-                )
-
-                # Make note in description to delete giftcard from main photos gallery
-                request_body = {
-                    "description": "Balance is 0. Delete this giftcard"
-                }
-
-                if media_to_delete:
-                    remove_media(media_to_delete, request_body=request_body)
-                    logger.info(f"Giftcard {card_id} balance is 0. Deleting from photos gallery...")
-
+                    logger.error(
+                        f"Attempt {attempt + 1}: Failed to get balance for card {gift_card.card_number}. Retrying...")
             else:
+                # Only executed if the loop completes without a 'break'
+                logger.error(
+                    f"Failed to get balance for card {gift_card.card_number} after {MAX_RETRIES} attempts. Skipping...")
+                data.append([gift_card.card_number, '-', message_body['link'], message_body['pin']])
+                notification_manager.push_notification(
+                    title='Giftcard Balance Update Failure',
+                    message=f"Failed to get balance for card {gift_card.card_number}. Skipping..."
+                )
+                continue  # Skip further processing
+
+            # balance = float(response['new_balance']) / 100
+
+            if balance is not None and balance == 0:
+                handle_zero_balance(gift_card,
+                                    notification_manager)  # Assuming this is a function to handle zero balance scenario
+            elif balance is not None:
                 notification_manager.push_notification(
                     title='Giftcard Balance',
-                    message=f'Your giftcard {card_id} balance is {money_format(balance)}',
+                    message=f'Your giftcard {gift_card.card_number} balance is {money_format(balance)}',
                 )
-                logger.info(f"Giftcard {card_id} balance updated to {balance}!")
+                logger.info(f"Giftcard {gift_card.card_number} balance updated to {balance}!")
 
-            data.append([card_id, balance, message_body['link'], message_body['pin']])
+            data.append([gift_card.card_number, balance, message_body['link'], message_body['pin']])
+
 
         except Exception as e:
             batch_item_failures.append({"itemIdentifier": record['messageId']})
@@ -101,11 +122,10 @@ def lambda_handler(event, context):
     sqs = boto3.resource('sqs')
     queue = sqs.get_queue_by_name(QueueName='GiftcardQueue')
 
-
     # if last lambda batch
-    if (int(queue.attributes["ApproximateNumberOfMessages"]) == 0
-            and queue.attributes["ApproximateNumberOfMessagesNotVisible"] == str(len(event['Records']))
-            and len(batch_item_failures) == 0):
+    queue_attributes = queue.attributes
+    last_batch = is_last_batch(queue_attributes, len(event['Records']), batch_item_failures)
+    if last_batch:
 
         aws_manager = AWSConnector()
 
@@ -186,5 +206,9 @@ if __name__ == '__main__':
          'messageAttributes': {}, 'md5OfBody': '956a5572ec39eaf2e1c00c7a58221f37', 'eventSource': 'aws:sqs',
          'eventSourceARN': 'arn:aws:sqs:eu-west-1:334010140999:GiftcardQueue', 'awsRegion': 'eu-west-1'}
     ]}
+
+    # async def run():
+    #     tasks = [asyncio.create_task(perky(perk)) for perk in perks]
+    #     results = await asyncio.gather(*tasks)
 
     print(lambda_handler(event, None))
