@@ -1,5 +1,6 @@
 import requests
 
+
 class GiftCardAPIService:
     def __init__(self, captcha_bypass):
         self.captcha_bypass = captcha_bypass

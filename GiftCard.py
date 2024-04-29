@@ -11,7 +11,7 @@ class PinError(ValueError):
     pass
 
 
-@dataclass
+@dataclass(slots=True)
 class GiftCard:
     card_number: str
     pin: str
@@ -26,5 +26,13 @@ class GiftCard:
     def update_balance(self, new_balance) -> None:
         self.balance = new_balance
 
-    def __repr__(self):
-        return f"GiftCard(card_number={self.card_number}, pin={self.pin}, balance={self.balance})"
+    # def __repr__(self):
+    #     return f"GiftCard(card_number={self.card_number}, pin={self.pin}, balance={self.balance})"
+
+if __name__ == '__main__':
+    giftcard = GiftCard('1111111111111111', '2222')
+    print(giftcard)
+
+    # giftcard.balance = 1.0
+    # print(giftcard.balance)
+

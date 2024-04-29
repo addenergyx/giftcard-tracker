@@ -1,8 +1,8 @@
 import pytest
 from GiftCard import GiftCard, CardNumberError, PinError
 
-def test_gift_card_initialization():
-    """Test initialization with valid inputs."""
+def test_gift_card_initialisation():
+    """Test initialisation with valid inputs."""
     card = GiftCard(card_number='1234567890123456', pin='1234')
     assert card.card_number == '1234567890123456'
     assert card.pin == '1234'
